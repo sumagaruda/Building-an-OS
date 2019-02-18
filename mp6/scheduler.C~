@@ -1,0 +1,144 @@
+/*
+ File: scheduler.C
+ 
+ Author:
+ Date  :
+ 
+ */
+
+/*--------------------------------------------------------------------------*/
+/* DEFINES */
+/*--------------------------------------------------------------------------*/
+
+/* -- (none) -- */
+
+/*--------------------------------------------------------------------------*/
+/* INCLUDES */
+/*--------------------------------------------------------------------------*/
+
+#include "scheduler.H"
+#include "thread.H"
+#include "console.H"
+#include "utils.H"
+#include "assert.H"
+#include "simple_keyboard.H"
+#include "blocking_disk.H"
+
+/*--------------------------------------------------------------------------*/
+/* DATA STRUCTURES */
+/*--------------------------------------------------------------------------*/
+
+/* -- (none) -- */
+
+/*--------------------------------------------------------------------------*/
+/* CONSTANTS */
+/*--------------------------------------------------------------------------*/
+
+/* -- (none) -- */
+
+/*--------------------------------------------------------------------------*/
+/* FORWARDS */
+/*--------------------------------------------------------------------------*/
+
+/* -- (none) -- */
+
+/*--------------------------------------------------------------------------*/
+/* METHODS FOR CLASS   S c h e d u l e r  */
+/*--------------------------------------------------------------------------*/
+
+Scheduler * Scheduler::SYSTEM_SCHEDULER = NULL;
+
+Scheduler::Scheduler() {
+  //Initially there are no threads in queue
+  head = NULL;
+  tail = NULL;
+  set_system_scheduler();
+  Console::puts("Constructed Scheduler.\n");
+}
+
+void Scheduler::set_system_scheduler() {
+	SYSTEM_SCHEDULER = this;
+}
+
+void Scheduler::yield() {
+  //We need to disable the interrupts
+  Machine::disable_interrupts();
+
+  if (head)
+     {
+	//pop the thread at the head of the ready_queue
+	ready_queue * pop_thread = head;
+
+	if (tail == pop_thread)
+           {
+	     tail = NULL;
+           }
+	
+	Thread * next_thread = pop_thread -> tcb;
+	head = head -> next;
+        delete pop_thread;
+  
+        // dispatch for the context switch
+        Thread::dispatch_to(next_thread);
+
+        //We need to enable the interrupts again
+	Machine::enable_interrupts();
+    }
+}
+
+void Scheduler::resume(Thread * _thread) {
+
+   //We need to disable the interrupts
+  Machine::disable_interrupts();
+
+  ready_queue * new_thread = new ready_queue;
+  new_thread -> tcb = _thread;
+  new_thread -> next = NULL;
+
+  if (head)
+     {
+	tail -> next = new_thread;
+	tail = tail -> next;
+      }
+  else 
+     {
+	head = new_thread;
+	tail = new_thread;
+      }
+    //We need to enable the interrupts again
+    Machine::enable_interrupts();
+}
+
+void Scheduler::add(Thread * _thread) {
+
+  //making the thread runnable
+  //i.e. adding it to the ready queue
+
+  resume(_thread);
+}
+
+void Scheduler::terminate(Thread * _thread) {
+ 
+ //remove the given thread from the scheduler
+  ready_queue * pop_thread = head;
+  ready_queue * pre_head = new ready_queue;
+
+  pre_head -> tcb = NULL;
+  pre_head -> next = pop_thread;
+
+  while(pop_thread)
+       {
+         if (pop_thread -> tcb == _thread)
+            {
+              pre_head -> next = pop_thread -> next;
+              delete pop_thread;
+	      Machine::disable_interrupts();
+	      pop_thread = pre_head -> next;
+              continue;
+            }
+        pre_head = pop_thread;
+        pop_thread = pop_thread -> next;
+      }
+Machine::enable_interrupts();
+}
+
